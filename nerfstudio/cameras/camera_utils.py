@@ -465,17 +465,17 @@ def radial_and_tangential_undistort(
     next_upd = torch.arange(coords.shape[0], device=coords.device)
 
     for _ in range(max_iterations):
-        x_upd = x[next_upd]
-        y_upd = y[next_upd]
         fx, fy, fx_x, fx_y, fy_x, fy_y = _compute_residual_and_jacobian(
-            x=x_upd,
-            y=y_upd,
+            x=x[next_upd],
+            y=y[next_upd],
             xd=coords[next_upd, 0],
             yd=coords[next_upd, 1],
             distortion_params=distortion_params[next_upd],
         )
 
-        converged = (fx < resolution[next_upd, 0] * tolerance) & (fy < resolution[next_upd, 1] * tolerance)
+        converged = (torch.abs(fx) < resolution[next_upd, 0] * tolerance) & (
+            torch.abs(fy) < resolution[next_upd, 1] * tolerance
+        )
 
         not_converged = torch.argwhere(~converged).squeeze(-1)
         converged = torch.argwhere(converged).squeeze(-1)
@@ -501,6 +501,21 @@ def radial_and_tangential_undistort(
         # careful: index_add_ (with underscore) is in-place, index_add (no underscore) is not in-place
         x = x.index_add(dim=0, index=next_upd, source=step[:, 0], alpha=-1)
         y = y.index_add(dim=0, index=next_upd, source=step[:, 1], alpha=-1)
+    else:
+        fx, fy, fx_x, fx_y, fy_x, fy_y = _compute_residual_and_jacobian(
+            x=x[next_upd],
+            y=y[next_upd],
+            xd=coords[next_upd, 0],
+            yd=coords[next_upd, 1],
+            distortion_params=distortion_params[next_upd],
+        )
+        denominator = fx_x * fy_y - fx_y * fy_x
+        invertible = torch.abs(denominator) > eps
+        numerator = torch.stack([fy_y, -fx_y, -fy_x, fx_x], dim=-1)
+        all_jacobian[upd_conv] = (torch.where(invertible, 1 / denominator, 0).reshape(-1, 1) * numerator).reshape(
+            -1, 2, 2
+        )
+        all_residual[next_upd] = torch.stack((fx, fy), dim=-1)
 
     undistort = torch.stack([x, y], dim=-1)
 
@@ -598,7 +613,8 @@ def fisheye_undistort(
     if resolution.shape[0] == 1:
         resolution = resolution.expand((coords.shape[0], -1))
 
-    resolution, _ = torch.min(resolution.to(coords.device), dim=-1)
+    # Compiler complains if we use torch.min instead of minimum - can't get sizes of tensor with symbolic shape
+    resolution = torch.minimum(resolution[..., 0], resolution[..., 1])
 
     # OpenCV uses an equidistant projection for its fisheye camera model
     # meaning the radius of the point is proportional to the angle from the principal direction
@@ -613,12 +629,11 @@ def fisheye_undistort(
     next_upd = torch.arange(theta.shape[0], device=theta.device)
 
     for i in range(max_iterations):
-        theta_upd = theta[next_upd]
         f, dtheta = _compute_residual_and_jacobian_fisheye(
-            theta=theta_upd, thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
+            theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
         )
 
-        converged = f < resolution[next_upd] * tolerance
+        converged = torch.abs(f) < (resolution[next_upd] * tolerance)
 
         not_converged = torch.argwhere(~converged).squeeze(-1)
         converged = torch.argwhere(converged).squeeze(-1)
@@ -638,6 +653,12 @@ def fisheye_undistort(
 
         # careful: index_add_ (with underscore) is in-place, index_add (no underscore) is not in-place
         theta = theta.index_add(dim=0, index=next_upd, source=step[:, 0], alpha=-1)
+    else:
+        f, dtheta = _compute_residual_and_jacobian_fisheye(
+            theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
+        )
+        all_derivative[next_upd] = dtheta
+        all_residual[next_upd] = f
 
     inverse_r_d = torch.where(r_d > 1e-5, 1 / r_d, 0)
     return (
@@ -645,6 +666,113 @@ def fisheye_undistort(
         all_derivative,
         coords * (1 + all_residual * inverse_r_d).unsqueeze(-1),
     )
+
+
+def _compute_residual_and_jacobian_old(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    xd: torch.Tensor,
+    yd: torch.Tensor,
+    distortion_params: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,]:
+    """Auxiliary function of radial_and_tangential_undistort() that computes residuals and jacobians.
+    Adapted from MultiNeRF:
+    https://github.com/google-research/multinerf/blob/b02228160d3179300c7d499dca28cb9ca3677f32/internal/camera_utils.py#L427-L474
+
+    Args:
+        x: The updated x coordinates.
+        y: The updated y coordinates.
+        xd: The distorted x coordinates.
+        yd: The distorted y coordinates.
+        distortion_params: The distortion parameters [k1, k2, k3, k4, p1, p2].
+
+    Returns:
+        The residuals (fx, fy) and jacobians (fx_x, fx_y, fy_x, fy_y).
+    """
+
+    k1 = distortion_params[..., 0]
+    k2 = distortion_params[..., 1]
+    k3 = distortion_params[..., 2]
+    k4 = distortion_params[..., 3]
+    p1 = distortion_params[..., 4]
+    p2 = distortion_params[..., 5]
+
+    # let r(x, y) = x^2 + y^2;
+    #     d(x, y) = 1 + k1 * r(x, y) + k2 * r(x, y) ^2 + k3 * r(x, y)^3 +
+    #                   k4 * r(x, y)^4;
+    r = x * x + y * y
+    d = 1.0 + r * (k1 + r * (k2 + r * (k3 + r * k4)))
+
+    # The perfect projection is:
+    # xd = x * d(x, y) + 2 * p1 * x * y + p2 * (r(x, y) + 2 * x^2);
+    # yd = y * d(x, y) + 2 * p2 * x * y + p1 * (r(x, y) + 2 * y^2);
+    #
+    # Let's define
+    #
+    # fx(x, y) = x * d(x, y) + 2 * p1 * x * y + p2 * (r(x, y) + 2 * x^2) - xd;
+    # fy(x, y) = y * d(x, y) + 2 * p2 * x * y + p1 * (r(x, y) + 2 * y^2) - yd;
+    #
+    # We are looking for a solution that satisfies
+    # fx(x, y) = fy(x, y) = 0;
+    fx = d * x + 2 * p1 * x * y + p2 * (r + 2 * x * x) - xd
+    fy = d * y + 2 * p2 * x * y + p1 * (r + 2 * y * y) - yd
+
+    # Compute derivative of d over [x, y]
+    d_r = k1 + r * (2.0 * k2 + r * (3.0 * k3 + r * 4.0 * k4))
+    d_x = 2.0 * x * d_r
+    d_y = 2.0 * y * d_r
+
+    # Compute derivative of fx over x and y.
+    fx_x = d + d_x * x + 2.0 * p1 * y + 6.0 * p2 * x
+    fx_y = d_y * x + 2.0 * p1 * x + 2.0 * p2 * y
+
+    # Compute derivative of fy over x and y.
+    fy_x = d_x * y + 2.0 * p2 * y + 2.0 * p1 * x
+    fy_y = d + d_y * y + 2.0 * p2 * x + 6.0 * p1 * y
+
+    return fx, fy, fx_x, fx_y, fy_x, fy_y
+
+
+@torch_compile(dynamic=True, mode="reduce-overhead", backend="eager")
+def radial_and_tangential_undistort_old(
+    coords: torch.Tensor,
+    distortion_params: torch.Tensor,
+    eps: float = 1e-3,
+    max_iterations: int = 10,
+) -> torch.Tensor:
+    """Computes undistorted coords given opencv distortion parameters.
+    Adapted from MultiNeRF
+    https://github.com/google-research/multinerf/blob/b02228160d3179300c7d499dca28cb9ca3677f32/internal/camera_utils.py#L477-L509
+
+    Args:
+        coords: The distorted coordinates.
+        distortion_params: The distortion parameters [k1, k2, k3, k4, p1, p2].
+        eps: The epsilon for the convergence.
+        max_iterations: The maximum number of iterations to perform.
+
+    Returns:
+        The undistorted coordinates.
+    """
+
+    # Initialize from the distorted point.
+    x = coords[..., 0]
+    y = coords[..., 1]
+
+    for _ in range(max_iterations):
+        fx, fy, fx_x, fx_y, fy_x, fy_y = _compute_residual_and_jacobian(
+            x=x, y=y, xd=coords[..., 0], yd=coords[..., 1], distortion_params=distortion_params
+        )
+        print("mean abs error: ", torch.mean(torch.abs(torch.sqrt(fx * fx + fy * fy))))
+        denominator = fy_x * fx_y - fx_x * fy_y
+        x_numerator = fx * fy_y - fy * fx_y
+        y_numerator = fy * fx_x - fx * fy_x
+        step_x = torch.where(torch.abs(denominator) > eps, x_numerator / denominator, torch.zeros_like(denominator))
+        step_y = torch.where(torch.abs(denominator) > eps, y_numerator / denominator, torch.zeros_like(denominator))
+
+        x = x + step_x
+        y = y + step_y
+
+    return torch.stack([x, y], dim=-1)
 
 
 def rotation_matrix(a: Float[Tensor, "3"], b: Float[Tensor, "3"]) -> Float[Tensor, "3 3"]:

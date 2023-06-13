@@ -645,28 +645,31 @@ class Cameras(TensorDataclass):
 
             # Do not apply distortion for equirectangular images
             if distortion_params is not None:
+                tolerance = 1e-5
                 # w, h of each pixel, in units of multiples of focal length.
                 resolutions = torch.stack((1 / fx, 1 / fy), dim=-1)
                 mask = (self.camera_type[true_indices] == CameraType.PERSPECTIVE.value).squeeze(-1)  # (num_rays)
                 if mask.any():
+                    coord_test = camera_utils.radial_and_tangential_undistort_old(coord[mask], distortion_params[mask])
                     coord[mask], jacobian, resample[mask] = camera_utils.radial_and_tangential_undistort(
                         coord[mask], distortion_params[mask], resolution=resolutions[mask], tolerance=tolerance
                     )
 
                     ja, jb, jc, jd = torch.unbind(jacobian.reshape(-1, 4), dim=1)
                     area_multipliers[mask] = 1 / (ja * jd - jb * jc)
+                    print(torch.max(area_multipliers[mask]), torch.min(area_multipliers[mask]))
+                    print(torch.max(torch.abs(coord[mask] - coord_test)))
 
                 mask = (self.camera_type[true_indices] == CameraType.FISHEYE.value).squeeze(-1)  # (num_rays)
                 if mask.any():
-                    r_d = torch.sqrt(torch.sum(coord**2, dim=-1))
-
                     coord[mask], dtheta, resample[mask] = camera_utils.fisheye_undistort(
                         coord[mask], distortion_params[mask], resolution=resolutions[mask], tolerance=tolerance
                     )
 
-                    r = torch.sqrt(torch.sum(coord**2, dim=-1))
+                    r_d2 = torch.sum(coord[mask] ** 2, dim=-1)
+                    r2 = torch.sum(coord[mask] ** 2, dim=-1)
 
-                    area_multipliers[mask] = torch.where(r_d > 1e-2, r / r_d, 1) / dtheta
+                    area_multipliers[mask] = torch.where(r_d2 > 1e-4, torch.sqrt(r2 / r_d2), 1) / dtheta
 
             # go back to pixel coordinates, remembering to flip axis order
             mask = (self.camera_type[true_indices] == CameraType.EQUIRECTANGULAR.value).squeeze(-1)
