@@ -45,7 +45,7 @@ static inline __host__ __device__ T div_round_up(T val, T divisor) {
 
 template <uint32_t D>
 __device__ uint32_t fast_hash(const uint32_t pos_grid[D]) {
-    
+
     // coherent type of hashing
     constexpr uint32_t primes[7] = { 1u, 2654435761u, 805459861u, 3674653429u, 2097192037u, 1434869437u, 2165219737u };
 
@@ -63,10 +63,10 @@ template <uint32_t D>
 __device__ uint32_t get_grid_index(
     const uint32_t gridtype, // gridtype: 0 == hash, 1 == tiled
     const uint32_t grid_C, // number of total channels for the embedding
-    const bool align_corners, 
+    const bool align_corners,
     const uint32_t ch, // number of output channels
-    const uint32_t hashmap_size, 
-    const uint32_t resolution, 
+    const uint32_t hashmap_size,
+    const uint32_t resolution,
     const uint32_t pos_grid[D] // location of the grid
 ) {
     uint32_t stride = 1;
@@ -105,11 +105,11 @@ __global__ void kernel_grid(
     const bool align_corners
 ) {
     const uint32_t b = blockIdx.x * blockDim.x + threadIdx.x;
-    
+
     if (b >= B) return;
 
     const uint32_t level = blockIdx.y;
-    
+
     // locate
     grid += (uint32_t)offsets[level] * grid_C;
     inputs += b * D;
@@ -128,7 +128,7 @@ __global__ void kernel_grid(
     if (flag_oob) {
         #pragma unroll
         for (uint32_t ch = 0; ch < C; ch++) {
-            outputs[ch] = 0; 
+            outputs[ch] = 0;
         }
         if (dy_dx) {
             dy_dx += b * D * L * C + level * D * C; // B L D C
@@ -136,8 +136,8 @@ __global__ void kernel_grid(
             for (uint32_t d = 0; d < D; d++) {
                 #pragma unroll
                 for (uint32_t ch = 0; ch < C; ch++) {
-                    dy_dx[d * C + ch] = 0; 
-                }       
+                    dy_dx[d * C + ch] = 0;
+                }
             }
         }
         return;
@@ -146,7 +146,7 @@ __global__ void kernel_grid(
     const uint32_t hashmap_size = offsets[level + 1] - offsets[level];
     const float scale = exp2f(level * S) * H - 1.0f;
     const uint32_t resolution = (uint32_t)ceil(scale) + 1;
-    
+
     // calculate coordinate
     float pos[D];
     uint32_t pos_grid[D];
@@ -182,24 +182,24 @@ __global__ void kernel_grid(
         for (uint32_t ch = 0; ch < C; ch++) {
             if (temporal_row_index[ch*4] == 1) {
                 // if a temporal_row_index == 1, then no interpolation between channels are used
-                uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners,
                     __float2uint_rn(temporal_row_index[ch*4+1]), hashmap_size, resolution, pos_grid_local);
                     results[ch] += w * grid[index];
             } else {
                 // else, we need to interpolate between channels
-                uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners,
                     __float2uint_rn(temporal_row_index[ch*4+1]), hashmap_size, resolution, pos_grid_local);
-                uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners,
                     __float2uint_rn(temporal_row_index[ch*4+3]), hashmap_size, resolution, pos_grid_local);
                 results[ch] += w * (grid[index_a]*temporal_row_index[ch*4]+grid[index_b]*temporal_row_index[ch*4+2]);
-            } 
+            }
         }
     }
 
     // writing to global memory (slow)
     #pragma unroll
     for (uint32_t ch = 0; ch < C; ch++) {
-        outputs[ch] = results[ch]; 
+        outputs[ch] = results[ch];
     }
 
     // prepare dy_dx
@@ -237,32 +237,32 @@ __global__ void kernel_grid(
                 #pragma unroll
                 for (uint32_t ch = 0; ch < C; ch++) {
                     if (temporal_row_index[ch*4] == 1) {
-                        uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                        uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners,
                             __float2uint_rn(temporal_row_index[ch*4+1]), hashmap_size, resolution, pos_grid_local);
                         left[ch] += grid[index];
                     } else {
-                        uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                        uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners,
                             __float2uint_rn(temporal_row_index[ch*4+1]), hashmap_size, resolution, pos_grid_local);
-                        uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                        uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners,
                             __float2uint_rn(temporal_row_index[ch*4+3]), hashmap_size, resolution, pos_grid_local);
                         left[ch] += grid[index_a]*temporal_row_index[ch*4]+grid[index_b]*temporal_row_index[ch*4+2];
-                    } 
+                    }
                 }
 
                 pos_grid_local[gd] = pos_grid[gd] + 1;
                 #pragma unroll
                 for (uint32_t ch = 0; ch < C; ch++) {
                     if (temporal_row_index[ch*4] == 1) {
-                        uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                        uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners,
                             __float2uint_rn(temporal_row_index[ch*4+1]), hashmap_size, resolution, pos_grid_local);
                         right[ch] += grid[index];
                     } else {
-                        uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                        uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners,
                             __float2uint_rn(temporal_row_index[ch*4+1]), hashmap_size, resolution, pos_grid_local);
-                        uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners, 
+                        uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners,
                             __float2uint_rn(temporal_row_index[ch*4+3]), hashmap_size, resolution, pos_grid_local);
                         right[ch] += grid[index_a]*temporal_row_index[ch*4]+grid[index_b]*temporal_row_index[ch*4+2];
-                    } 
+                    }
                 }
 
                 #pragma unroll
@@ -283,15 +283,15 @@ __global__ void kernel_grid(
 template <typename scalar_t, uint32_t D, uint32_t C, uint32_t N_C>
 __global__ void kernel_grid_backward(
     const scalar_t * __restrict__ grad,
-    const float * __restrict__ inputs, 
-    const float * __restrict__ temporal_row_index, 
-    const scalar_t * __restrict__ grid, 
-    const int * __restrict__ offsets, 
-    scalar_t * __restrict__ grad_grid, 
-    const uint32_t B, 
+    const float * __restrict__ inputs,
+    const float * __restrict__ temporal_row_index,
+    const scalar_t * __restrict__ grid,
+    const int * __restrict__ offsets,
+    scalar_t * __restrict__ grad_grid,
+    const uint32_t B,
     const uint32_t grid_C,
-    const uint32_t L, 
-    const float S, 
+    const uint32_t L,
+    const float S,
     const uint32_t H,
     const uint32_t gridtype,
     const bool align_corners
@@ -301,7 +301,7 @@ __global__ void kernel_grid_backward(
 
     const uint32_t level = blockIdx.y;
     // embed channel (from the outputs)
-    const uint32_t ch = (blockIdx.x * blockDim.x + threadIdx.x) * N_C - b * C; 
+    const uint32_t ch = (blockIdx.x * blockDim.x + threadIdx.x) * N_C - b * C;
 
     // locate
     grad_grid += offsets[level] * grid_C;
@@ -354,14 +354,14 @@ __global__ void kernel_grid_backward(
         // get the weights used for calculating the interpolation
         if (temporal_row_index[0] == 1) {
             // if no interpolation, directly return grad
-            uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners, 
+            uint32_t index = get_grid_index<D>(gridtype, grid_C, align_corners,
                 __float2uint_rn(temporal_row_index[1]), hashmap_size, resolution, pos_grid_local);
             atomicAdd(&grad_grid[index], w*grad_cur);
         } else {
             // if interpolation used, return with weights multiplied
-            uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners, 
+            uint32_t index_a = get_grid_index<D>(gridtype, grid_C, align_corners,
                 __float2uint_rn(temporal_row_index[1]), hashmap_size, resolution, pos_grid_local);
-            uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners, 
+            uint32_t index_b = get_grid_index<D>(gridtype, grid_C, align_corners,
                 __float2uint_rn(temporal_row_index[3]), hashmap_size, resolution, pos_grid_local);
             atomicAdd(&grad_grid[index_a], temporal_row_index[0]*w*grad_cur);
             atomicAdd(&grad_grid[index_b], temporal_row_index[2]*w*grad_cur);
@@ -373,9 +373,9 @@ __global__ void kernel_grid_backward(
 template <typename scalar_t, uint32_t D, uint32_t C>
 __global__ void kernel_input_backward(
     const scalar_t * __restrict__ grad,
-    const scalar_t * __restrict__ dy_dx,  
-    scalar_t * __restrict__ grad_inputs, 
-    uint32_t B, 
+    const scalar_t * __restrict__ dy_dx,
+    scalar_t * __restrict__ grad_inputs,
+    uint32_t B,
     uint32_t L
 ) {
     const uint32_t t = threadIdx.x + blockIdx.x * blockDim.x;
@@ -387,7 +387,7 @@ __global__ void kernel_input_backward(
     dy_dx += b * L * D * C;
 
     scalar_t result = 0;
-    
+
     # pragma unroll
     for (int l = 0; l < L; l++) {
         # pragma unroll
@@ -402,35 +402,35 @@ __global__ void kernel_input_backward(
 
 template <typename scalar_t, uint32_t D>
 void kernel_grid_wrapper(
-    const float *inputs, 
-    const float *temporal_row_index, 
-    const scalar_t *embeddings, 
-    const int *offsets, 
-    scalar_t *outputs, 
-    const uint32_t B, 
-    const uint32_t grid_C, 
-    const uint32_t C, 
-    const uint32_t L, 
-    const float S, 
-    const uint32_t H, 
-    scalar_t *dy_dx, 
-    const uint32_t gridtype, 
+    const float *inputs,
+    const float *temporal_row_index,
+    const scalar_t *embeddings,
+    const int *offsets,
+    scalar_t *outputs,
+    const uint32_t B,
+    const uint32_t grid_C,
+    const uint32_t C,
+    const uint32_t L,
+    const float S,
+    const uint32_t H,
+    scalar_t *dy_dx,
+    const uint32_t gridtype,
     const bool align_corners
 ) {
     static constexpr uint32_t N_THREAD = 512;
     const dim3 blocks_hashgrid = { div_round_up(B, N_THREAD), L, 1 };
     switch (C) {
         case 1: kernel_grid<scalar_t, D, 1><<<blocks_hashgrid, N_THREAD>>>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 2: kernel_grid<scalar_t, D, 2><<<blocks_hashgrid, N_THREAD>>>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 4: kernel_grid<scalar_t, D, 4><<<blocks_hashgrid, N_THREAD>>>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 8: kernel_grid<scalar_t, D, 8><<<blocks_hashgrid, N_THREAD>>>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, L, S, H, dy_dx, gridtype, align_corners); break;
         default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
     }
@@ -438,37 +438,37 @@ void kernel_grid_wrapper(
 
 template <typename scalar_t>
 void temporal_grid_encode_forward_cuda(
-    const float *inputs, 
-    const float *temporal_row_index, 
-    const scalar_t *embeddings, 
-    const int *offsets, 
-    scalar_t *outputs, 
-    const uint32_t B, 
-    const uint32_t D, 
-    const uint32_t grid_C, 
-    const uint32_t C, 
-    const uint32_t L, 
-    const float S, 
-    const uint32_t H, 
-    scalar_t *dy_dx, 
-    const uint32_t gridtype, 
+    const float *inputs,
+    const float *temporal_row_index,
+    const scalar_t *embeddings,
+    const int *offsets,
+    scalar_t *outputs,
+    const uint32_t B,
+    const uint32_t D,
+    const uint32_t grid_C,
+    const uint32_t C,
+    const uint32_t L,
+    const float S,
+    const uint32_t H,
+    scalar_t *dy_dx,
+    const uint32_t gridtype,
     const bool align_corners
 ) {
     switch (D) {
         case 1: kernel_grid_wrapper<scalar_t, 1>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 2: kernel_grid_wrapper<scalar_t, 2>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 3: kernel_grid_wrapper<scalar_t, 3>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 4: kernel_grid_wrapper<scalar_t, 4>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, C, L, S, H, dy_dx, gridtype, align_corners); break;
         case 5: kernel_grid_wrapper<scalar_t, 5>(
-            inputs, temporal_row_index, embeddings, offsets, outputs, 
+            inputs, temporal_row_index, embeddings, offsets, outputs,
             B, grid_C, C, L, S, H, dy_dx, gridtype, align_corners); break;
         default: throw std::runtime_error{"GridEncoding: D must be 1, 2, 3, 4, or 5."};
     }
@@ -476,56 +476,56 @@ void temporal_grid_encode_forward_cuda(
 
 template <typename scalar_t, uint32_t D>
 void kernel_grid_backward_wrapper(
-    const scalar_t *grad, 
-    const float *inputs, 
-    const float *temporal_row_index, 
-    const scalar_t *embeddings, 
-    const int *offsets, 
-    scalar_t *grad_embeddings, 
-    const uint32_t B, 
-    const uint32_t grid_C, 
-    const uint32_t C, 
-    const uint32_t L, 
-    const float S, 
-    const uint32_t H, 
-    scalar_t *dy_dx, 
-    scalar_t *grad_inputs, 
-    const uint32_t gridtype, 
+    const scalar_t *grad,
+    const float *inputs,
+    const float *temporal_row_index,
+    const scalar_t *embeddings,
+    const int *offsets,
+    scalar_t *grad_embeddings,
+    const uint32_t B,
+    const uint32_t grid_C,
+    const uint32_t C,
+    const uint32_t L,
+    const float S,
+    const uint32_t H,
+    scalar_t *dy_dx,
+    scalar_t *grad_inputs,
+    const uint32_t gridtype,
     const bool align_corners
 ) {
     static constexpr uint32_t N_THREAD = 256;
     const dim3 blocks_hashgrid = { div_round_up(B * C, N_THREAD), L, 1 };
     switch (C) {
-        case 1: 
+        case 1:
             kernel_grid_backward<scalar_t, D, 1, 1><<<blocks_hashgrid, N_THREAD>>>(
-                grad, inputs, temporal_row_index, 
-                embeddings, offsets, grad_embeddings, B, grid_C, L, S, H, gridtype, align_corners); 
+                grad, inputs, temporal_row_index,
+                embeddings, offsets, grad_embeddings, B, grid_C, L, S, H, gridtype, align_corners);
             if (dy_dx) {
                 kernel_input_backward<scalar_t, D, 1><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(
                     grad, dy_dx, grad_inputs, B, L);
             }
             break;
-        case 2: 
+        case 2:
             kernel_grid_backward<scalar_t, D, 2, 1><<<blocks_hashgrid, N_THREAD>>>(
-                grad, inputs, temporal_row_index, 
+                grad, inputs, temporal_row_index,
                 embeddings, offsets, grad_embeddings, B, grid_C, L, S, H, gridtype, align_corners);
             if (dy_dx) {
                 kernel_input_backward<scalar_t, D, 2><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(
                     grad, dy_dx, grad_inputs, B, L);
             }
             break;
-        case 4: 
+        case 4:
             kernel_grid_backward<scalar_t, D, 4, 1><<<blocks_hashgrid, N_THREAD>>>(
-                grad, inputs, temporal_row_index, 
+                grad, inputs, temporal_row_index,
                 embeddings, offsets, grad_embeddings, B, grid_C, L, S, H, gridtype, align_corners);
             if (dy_dx) {
                 kernel_input_backward<scalar_t, D, 4><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(
                     grad, dy_dx, grad_inputs, B, L);
             }
             break;
-        case 8: 
+        case 8:
             kernel_grid_backward<scalar_t, D, 8, 1><<<blocks_hashgrid, N_THREAD>>>(
-                grad, inputs, temporal_row_index, 
+                grad, inputs, temporal_row_index,
                 embeddings, offsets, grad_embeddings, B, grid_C, L, S, H, gridtype, align_corners);
             if (dy_dx) {
                 kernel_input_backward<scalar_t, D, 8><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(
@@ -538,59 +538,59 @@ void kernel_grid_backward_wrapper(
 
 template <typename scalar_t>
 void temporal_grid_encode_backward_cuda(
-    const scalar_t *grad, 
-    const float *inputs, 
-    const float *temporal_row_index, 
-    const scalar_t *embeddings, 
-    const int *offsets, 
-    scalar_t *grad_embeddings, 
-    const uint32_t B, 
-    const uint32_t D, 
-    const uint32_t grid_C, 
-    const uint32_t C, 
-    const uint32_t L, 
-    const float S, 
-    const uint32_t H, 
-    scalar_t *dy_dx, 
-    scalar_t *grad_inputs, 
-    const uint32_t gridtype, 
+    const scalar_t *grad,
+    const float *inputs,
+    const float *temporal_row_index,
+    const scalar_t *embeddings,
+    const int *offsets,
+    scalar_t *grad_embeddings,
+    const uint32_t B,
+    const uint32_t D,
+    const uint32_t grid_C,
+    const uint32_t C,
+    const uint32_t L,
+    const float S,
+    const uint32_t H,
+    scalar_t *dy_dx,
+    scalar_t *grad_inputs,
+    const uint32_t gridtype,
     const bool align_corners
 ) {
     switch (D) {
         case 1: kernel_grid_backward_wrapper<scalar_t, 1>(
-            grad, inputs, temporal_row_index, embeddings, offsets, 
+            grad, inputs, temporal_row_index, embeddings, offsets,
             grad_embeddings, B, grid_C, C, L, S, H, dy_dx, grad_inputs, gridtype, align_corners); break;
         case 2: kernel_grid_backward_wrapper<scalar_t, 2>(
-            grad, inputs, temporal_row_index, embeddings, offsets, 
+            grad, inputs, temporal_row_index, embeddings, offsets,
             grad_embeddings, B, grid_C, C, L, S, H, dy_dx, grad_inputs, gridtype, align_corners); break;
         case 3: kernel_grid_backward_wrapper<scalar_t, 3>(
-            grad, inputs, temporal_row_index, embeddings, offsets, 
+            grad, inputs, temporal_row_index, embeddings, offsets,
             grad_embeddings, B, grid_C, C, L, S, H, dy_dx, grad_inputs, gridtype, align_corners); break;
         case 4: kernel_grid_backward_wrapper<scalar_t, 4>(
-            grad, inputs, temporal_row_index, embeddings, offsets, 
+            grad, inputs, temporal_row_index, embeddings, offsets,
             grad_embeddings, B, grid_C, C, L, S, H, dy_dx, grad_inputs, gridtype, align_corners); break;
         case 5: kernel_grid_backward_wrapper<scalar_t, 5>(
-            grad, inputs, temporal_row_index, embeddings, offsets, 
+            grad, inputs, temporal_row_index, embeddings, offsets,
             grad_embeddings, B, grid_C, C, L, S, H, dy_dx, grad_inputs, gridtype, align_corners); break;
         default: throw std::runtime_error{"GridEncoding: D must be 1, 2, 3, 4, or 5."};
     }
 }
 
 void temporal_grid_encode_forward(
-    const at::Tensor inputs, 
-    const at::Tensor temporal_row_index, 
-    const at::Tensor embeddings, 
-    const at::Tensor offsets, 
-    at::Tensor outputs, 
-    const uint32_t B, 
-    const uint32_t D, 
-    const uint32_t grid_C, 
-    const uint32_t C, 
-    const uint32_t L, 
-    const float S, 
-    const uint32_t H, 
-    at::optional<at::Tensor> dy_dx, 
-    const uint32_t gridtype, 
+    const at::Tensor inputs,
+    const at::Tensor temporal_row_index,
+    const at::Tensor embeddings,
+    const at::Tensor offsets,
+    at::Tensor outputs,
+    const uint32_t B,
+    const uint32_t D,
+    const uint32_t grid_C,
+    const uint32_t C,
+    const uint32_t L,
+    const float S,
+    const uint32_t H,
+    at::optional<at::Tensor> dy_dx,
+    const uint32_t gridtype,
     const bool align_corners
 ) {
     CHECK_INPUT(inputs);
@@ -610,30 +610,30 @@ void temporal_grid_encode_forward(
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
     embeddings.scalar_type(), "temporal_grid_encode_forward", ([&] {
         temporal_grid_encode_forward_cuda<scalar_t>(
-            inputs.data_ptr<float>(), temporal_row_index.data_ptr<float>(), embeddings.data_ptr<scalar_t>(), 
-            offsets.data_ptr<int>(), outputs.data_ptr<scalar_t>(), B, D, grid_C, C, L, S, H, 
-            dy_dx.has_value() ? dy_dx.value().data_ptr<scalar_t>() : nullptr, 
+            inputs.data_ptr<float>(), temporal_row_index.data_ptr<float>(), embeddings.data_ptr<scalar_t>(),
+            offsets.data_ptr<int>(), outputs.data_ptr<scalar_t>(), B, D, grid_C, C, L, S, H,
+            dy_dx.has_value() ? dy_dx.value().data_ptr<scalar_t>() : nullptr,
             gridtype, align_corners);
     }));
 }
 
 void temporal_grid_encode_backward(
-    const at::Tensor grad, 
-    const at::Tensor inputs, 
-    const at::Tensor temporal_row_index, 
-    const at::Tensor embeddings, 
-    const at::Tensor offsets, 
-    at::Tensor grad_embeddings, 
-    const uint32_t B, 
-    const uint32_t D, 
-    const uint32_t grid_C, 
-    const uint32_t C, 
-    const uint32_t L, 
-    const float S, 
-    const uint32_t H, 
-    const at::optional<at::Tensor> dy_dx, 
-    at::optional<at::Tensor> grad_inputs, 
-    const uint32_t gridtype, 
+    const at::Tensor grad,
+    const at::Tensor inputs,
+    const at::Tensor temporal_row_index,
+    const at::Tensor embeddings,
+    const at::Tensor offsets,
+    at::Tensor grad_embeddings,
+    const uint32_t B,
+    const uint32_t D,
+    const uint32_t grid_C,
+    const uint32_t C,
+    const uint32_t L,
+    const float S,
+    const uint32_t H,
+    const at::optional<at::Tensor> dy_dx,
+    at::optional<at::Tensor> grad_inputs,
+    const uint32_t gridtype,
     const bool align_corners
 ) {
     CHECK_INPUT(grad);
@@ -657,11 +657,11 @@ void temporal_grid_encode_backward(
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
     grad.scalar_type(), "temporal_grid_encode_backward", ([&] {
         temporal_grid_encode_backward_cuda<scalar_t>(
-            grad.data_ptr<scalar_t>(), inputs.data_ptr<float>(), temporal_row_index.data_ptr<float>(), 
-            embeddings.data_ptr<scalar_t>(), offsets.data_ptr<int>(), grad_embeddings.data_ptr<scalar_t>(), 
-            B, D, grid_C, C, L, S, H, 
-            dy_dx.has_value() ? dy_dx.value().data_ptr<scalar_t>() : nullptr, 
-            grad_inputs.has_value() ? grad_inputs.value().data_ptr<scalar_t>() : nullptr, 
+            grad.data_ptr<scalar_t>(), inputs.data_ptr<float>(), temporal_row_index.data_ptr<float>(),
+            embeddings.data_ptr<scalar_t>(), offsets.data_ptr<int>(), grad_embeddings.data_ptr<scalar_t>(),
+            B, D, grid_C, C, L, S, H,
+            dy_dx.has_value() ? dy_dx.value().data_ptr<scalar_t>() : nullptr,
+            grad_inputs.has_value() ? grad_inputs.value().data_ptr<scalar_t>() : nullptr,
             gridtype, align_corners);
     }));
 }

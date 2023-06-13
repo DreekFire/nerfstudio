@@ -11,7 +11,7 @@ while [ : ]; do
         shift
         ;;
     --) shift;
-        break 
+        break
         ;;
   esac
 done

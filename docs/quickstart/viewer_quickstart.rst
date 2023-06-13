@@ -41,7 +41,7 @@ Rendering a video
 
 |
 
-..  seealso:: 
+..  seealso::
 
   For a more in-depth developer overview on how to hack with the viewer, see our `developer guide </docs/_build/html/developer_guides/viewer/index.html>`_
 
@@ -57,10 +57,10 @@ You should be able to click the link obtained while running a script to open the
 Training on a remote machine
 ----------------------------
 
-If you are training on a remote maching, the viewer will still let you view your trainings. 
+If you are training on a remote maching, the viewer will still let you view your trainings.
 You will need to forward the port that the viewer is running on.
 
-For example, if you are running the viewer on port 7007, you will need to forward that port to your local machine. 
+For example, if you are running the viewer on port 7007, you will need to forward that port to your local machine.
 You can (without needing to modify router port settings) simply do this by opening a new terminal window and sshing into the remote machine with the following command:
 
 ..  code-block:: bash
@@ -70,8 +70,8 @@ You can (without needing to modify router port settings) simply do this by openi
 
 ..  admonition:: Note
 
-    So long as you don't close this terminal window with this specific active ssh connection, the port will remain open for all your other ssh sessions. 
-    
+    So long as you don't close this terminal window with this specific active ssh connection, the port will remain open for all your other ssh sessions.
+
     For example, if you do this in a new terminal window, any existing ssh sessions (terminal windows, VSCode remote connection, etc) will still be able to access the port, but if you close this terminal window, the port will be closed.
 
 

@@ -94,7 +94,7 @@ class InstantNGP(DataParser):
         assert (
             len(image_filenames) != 0
         ), """
-        No image files found. 
+        No image files found.
         You should check the file_paths in the transforms.json file to make sure they are correct.
         """
         poses = np.array(poses).astype(np.float32)

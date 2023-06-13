@@ -20,7 +20,7 @@ class MyClass(nn.Module):#must inherit from nn.Module
         self.custom_value = ViewerNumber(name="My Value", default_value=1.0)
 ```
 **Element Hierarchy**
-The viewer recursively searches all `nn.Module` children of the base `Pipeline` object, and arranges parameters into folders based on their variable names. 
+The viewer recursively searches all `nn.Module` children of the base `Pipeline` object, and arranges parameters into folders based on their variable names.
 For example, a `ViewerElement` defined in `pipeline.model.field` will be in the "Custom/model/field" folder in the GUI.
 
 **Reading the value**

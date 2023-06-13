@@ -58,7 +58,7 @@ ns-train kplanes-dynamic --data <data-folder>
 :::{admonition} Note
 :class: warning
 
-`kplanes` is set up to use blender data, (download it running `ns-download-data blender`), 
+`kplanes` is set up to use blender data, (download it running `ns-download-data blender`),
 `kplanes-dynamic` is set up to use DNeRF data, (download it running `ns-download-data dnerf`).
 :::
 
@@ -66,7 +66,7 @@ ns-train kplanes-dynamic --data <data-folder>
 ## Method
 
 ![method overview](https://sarafridov.github.io/K-Planes/assets/intro_figure.jpg)<br>
-K-planes represents a scene in k dimensions -- where k can be 3 for static 3-dimensional scenes or 4 for scenes which change in time -- 
+K-planes represents a scene in k dimensions -- where k can be 3 for static 3-dimensional scenes or 4 for scenes which change in time --
 using k-choose-2 planes (or grids). After ray-sampling, the querying the field at a certain position consists in querying each plane (with interpolation), and combining the resulting features through multiplication.
 This factorization of space and time keeps memory usage low, and is very flexible in the kinds of priors and regularizers that can be added.<br>
 <br>

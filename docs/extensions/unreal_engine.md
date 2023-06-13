@@ -1,10 +1,10 @@
 # Exporting to Unreal Engine
 
  ```{image} imgs/desolation_unreal.png
- :width: 800 
- :align: center 
- :alt: NeRF in Unreal Engine 
- ``` 
+ :width: 800
+ :align: center
+ :alt: NeRF in Unreal Engine
+ ```
 
 ## Overview
 
@@ -25,16 +25,16 @@ ns-train volinga --data /path/to/your/data --vis viewer
 
 Once the training is done, you can find your checkpoint file in the `outputs/path-to-your-data/volinga` folder. Then, you can drag it to Volinga Suite to export it to NVOL.
 
- ```{image} imgs/export_nvol.png 
- :width: 400 
- :align: center 
- :alt: Nvol export in Voliga Suite 
- ``` 
+ ```{image} imgs/export_nvol.png
+ :width: 400
+ :align: center
+ :alt: Nvol export in Voliga Suite
+ ```
 
 Once the NVOL is ready, you can download it and use it in Unreal Engine.
 
- ```{image} imgs/nvol_ready.png 
- :width: 800 
- :align: center 
- :alt: NVOL ready to use 
- ``` 
+ ```{image} imgs/nvol_ready.png
+ :width: 800
+ :align: center
+ :alt: NVOL ready to use
+ ```

@@ -1,9 +1,9 @@
 # Nerfacto
 
 <h4>Our *defacto* method.</h4>
- 
+
 ### Running the Method
- 
+
 ```bash
 ns-train nerfacto --help
 ```

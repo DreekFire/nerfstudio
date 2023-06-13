@@ -17,7 +17,7 @@ while getopts "m:v:s" opt; do
         m ) method_name="$OPTARG" ;;
         v ) vis="$OPTARG" ;;
         s ) single=true ;;
-        ? ) helpFunction ;; 
+        ? ) helpFunction ;;
     esac
 done
 
@@ -88,7 +88,7 @@ for dataset in "${DATASETS[@]}"; do
              --timestamp "$timestamp" \
              ${dataparser} & GPU_PID[$idx]=$!
     echo "Launched ${method_name} ${dataset} on gpu ${GPU_IDX[$idx]}, ${tag}"
-    
+
     # update gpu
     ((idx=(idx+1)%len))
 done

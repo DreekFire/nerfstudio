@@ -18,7 +18,7 @@ while getopts "m:o:t:s" opt; do
         o ) output_dir="$OPTARG" ;;
         t ) timestamp="$OPTARG" ;;
         s ) single=true ;;
-        ? ) helpFunction_launch_eval ;; 
+        ? ) helpFunction_launch_eval ;;
     esac
 done
 

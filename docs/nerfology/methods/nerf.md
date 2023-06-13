@@ -16,7 +16,7 @@ ns-train vanilla-nerf
 
 ## Method overview
 
-If you have arrived to this site, it is likely that you have at least heard of NeRFs. This page will discuss the original NeRF paper, _"NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis"_ by Mildenhall, Srinivasan, Tancik et al. (2020). 
+If you have arrived to this site, it is likely that you have at least heard of NeRFs. This page will discuss the original NeRF paper, _"NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis"_ by Mildenhall, Srinivasan, Tancik et al. (2020).
 
 For most tasks, using the original NeRF model is likely not a good choice and hence we provide implementations of various other NeRF related models. It is however useful to understand how NeRF's work as most follow ups follow a similar structure and it doesn't require CUDA to execute (useful for stepping through the code with a debugger if you don't have a GPU at hand).
 
@@ -106,7 +106,7 @@ dir_enc = NeRFEncoding(
 :class: only-dark
 ```
 
-Now that we have a representation of space, we need some way to render new images of it. To accomplish this, we are going to _project_ a ray from the target pixel and evaluate points along that ray. We then rely on classic volumetric rendering techniques [[Kajiya, 1984]](https://dl.acm.org/doi/abs/10.1145/964965.808594) to composite the points into a predicted color. 
+Now that we have a representation of space, we need some way to render new images of it. To accomplish this, we are going to _project_ a ray from the target pixel and evaluate points along that ray. We then rely on classic volumetric rendering techniques [[Kajiya, 1984]](https://dl.acm.org/doi/abs/10.1145/964965.808594) to composite the points into a predicted color.
 
 This compositing is similar to what happens in tools like Photoshop when you layer multiple objects of varying opacity on top of each other. The only difference is that NeRF takes into account the differences in spacing between points.
 
@@ -139,9 +139,9 @@ rgb = renderer_rgb(
 :class: only-dark
 ```
 
-How we sample points along rays in space is an important design decision. Various sampling strategies can be used which are discussed in detail in the [Ray Samplers](../model_components/visualize_samplers.ipynb) guide. In NeRF we take advantage of a hierarchical sampling scheme that first uses a _uniform sampler_ and is followed by a _PDF sampler_. 
+How we sample points along rays in space is an important design decision. Various sampling strategies can be used which are discussed in detail in the [Ray Samplers](../model_components/visualize_samplers.ipynb) guide. In NeRF we take advantage of a hierarchical sampling scheme that first uses a _uniform sampler_ and is followed by a _PDF sampler_.
 
-The uniform sampler distributes samples evenly between a predefined distance range from the camera. These are then used to compute an initial render of the scene. The renderer optionally produces _weights_ for each sample that correlate with how important each sample was to the final renderer. 
+The uniform sampler distributes samples evenly between a predefined distance range from the camera. These are then used to compute an initial render of the scene. The renderer optionally produces _weights_ for each sample that correlate with how important each sample was to the final renderer.
 
 The PDF sampler uses these _weights_ to generate a new set of samples that are biased to regions of higher weight. In practice, these regions are near the surface of the object.
 
