@@ -381,27 +381,22 @@ def _multiple_bilinear_sample(im, c, y, x):
     x_max = im.shape[2] - 1
     c = c.long()
     y_floor = y.long()
-    y_ceil = torch.clamp(y_floor + 1, max=y_max)
+    y_ceil = y_floor + 1
+    y_ceil = y_ceil - (y_ceil > y_max).long()
     x_floor = x.long()
-    x_ceil = torch.clamp(x_floor + 1, max=x_max)
-    corners = torch.stack(
-        [im[c, y_floor, x_floor], im[c, y_ceil, x_floor], im[c, y_floor, x_ceil], im[c, y_ceil, x_ceil]], dim=1
-    )
+    x_ceil = x_floor + 1
+    x_ceil = x_ceil - (x_ceil > x_max).long()
+    corner_tl = im[c, y_floor, x_floor]
+    corner_bl = im[c, y_ceil, x_floor]
+    corner_tr = im[c, y_floor, x_ceil]
+    corner_br = im[c, y_ceil, x_ceil]
     remain_x = x - x_floor
     remain_y = y - y_floor
     remain_comp_x = 1 - remain_x
     remain_comp_y = 1 - remain_y
-    multipliers = (
-        torch.stack(
-            [
-                remain_comp_x * remain_comp_y,
-                remain_x * remain_comp_y,
-                remain_comp_x * remain_y,
-                remain_x * remain_y,
-            ],
-            dim=1,
-        )
-        .reshape(-1, 4, 1)
-        .to(im.device)
-    )
-    return torch.sum(corners * multipliers, dim=1)
+
+    w_tl = (remain_comp_x * remain_comp_y).unsqueeze(-1)
+    w_bl = (remain_x * remain_comp_y).unsqueeze(-1)
+    w_tr = (remain_comp_x * remain_y).unsqueeze(-1)
+    w_br = (remain_x * remain_y).unsqueeze(-1)
+    return w_tl * corner_tl + w_bl * corner_bl + w_tr * corner_tr + w_br * corner_br

@@ -626,39 +626,47 @@ def fisheye_undistort(
     all_derivative = torch.empty_like(theta)
     all_residual = torch.empty_like(theta)
 
-    next_upd = torch.arange(theta.shape[0], device=theta.device)
+    # next_upd = torch.arange(theta.shape[0], device=theta.device)
 
     for i in range(max_iterations):
         f, dtheta = _compute_residual_and_jacobian_fisheye(
-            theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
+            # theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
+            theta=theta,
+            thetad=r_d,
+            distortion_params=distortion_params,
         )
 
-        converged = torch.abs(f) < (resolution[next_upd] * tolerance)
+        converged = torch.abs(f) < (resolution * tolerance)
 
-        not_converged = torch.argwhere(~converged).squeeze(-1)
-        converged = torch.argwhere(converged).squeeze(-1)
+        # not_converged = torch.argwhere(~converged).squeeze(-1)
+        # converged = torch.argwhere(converged).squeeze(-1)
 
-        upd_conv = next_upd[converged]
-        all_derivative[upd_conv] = dtheta[converged]
-        all_residual[upd_conv] = f[converged]
+        # upd_conv = next_upd[converged]
+        # all_derivative[upd_conv] = dtheta[converged]
+        # all_residual[upd_conv] = f[converged]
 
-        next_upd = next_upd[not_converged]
-        if next_upd.numel() == 0:
+        # next_upd = next_upd[not_converged]
+        # if next_upd.numel() == 0:
+        if converged.all():
+            all_derivative = dtheta
+            all_residual = f
             break
 
-        dtheta = dtheta[not_converged]
-
-        f = f[not_converged].reshape(-1, 1)
+        # dtheta = dtheta[not_converged]
+        # f = f[not_converged].reshape(-1, 1)
         step = torch.where(torch.abs(dtheta) > eps, (f / dtheta), 0)
 
         # careful: index_add_ (with underscore) is in-place, index_add (no underscore) is not in-place
-        theta = theta.index_add(dim=0, index=next_upd, source=step[:, 0], alpha=-1)
+        theta = theta - step
     else:
         f, dtheta = _compute_residual_and_jacobian_fisheye(
-            theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
+            theta=theta,
+            thetad=r_d,
+            distortion_params=distortion_params
+            # theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
         )
-        all_derivative[next_upd] = dtheta
-        all_residual[next_upd] = f
+        all_derivative = dtheta
+        all_residual = f
 
     inverse_r_d = torch.where(r_d > 1e-5, 1 / r_d, 0)
     return (
