@@ -462,60 +462,48 @@ def radial_and_tangential_undistort(
     all_jacobian = torch.empty(x.shape + (2, 2), device=coords.device)
     all_residual = torch.empty_like(coords)
 
-    next_upd = torch.arange(coords.shape[0], device=coords.device)
-
     for _ in range(max_iterations):
         fx, fy, fx_x, fx_y, fy_x, fy_y = _compute_residual_and_jacobian(
-            x=x[next_upd],
-            y=y[next_upd],
-            xd=coords[next_upd, 0],
-            yd=coords[next_upd, 1],
-            distortion_params=distortion_params[next_upd],
+            x=x,
+            y=y,
+            xd=coords[..., 0],
+            yd=coords[..., 1],
+            distortion_params=distortion_params,
         )
 
-        converged = (torch.abs(fx) < resolution[next_upd, 0] * tolerance) & (
-            torch.abs(fy) < resolution[next_upd, 1] * tolerance
+        converged = torch.logical_and(
+            (torch.abs(fx) < resolution[..., 0] * tolerance), (torch.abs(fy) < resolution[..., 1] * tolerance)
         )
-
-        not_converged = torch.argwhere(~converged).squeeze(-1)
-        converged = torch.argwhere(converged).squeeze(-1)
 
         denominator = fx_x * fy_y - fx_y * fy_x
         invertible = torch.abs(denominator) > eps
         numerator = torch.stack([fy_y, -fx_y, -fy_x, fx_x], dim=-1)
         j_inv = (torch.where(invertible, 1 / denominator, 0).reshape(-1, 1) * numerator).reshape(-1, 2, 2)
-        upd_conv = next_upd[converged]
-        all_jacobian[upd_conv] = j_inv[converged]
         residual = torch.stack((fx, fy), dim=-1)
-        all_residual[upd_conv] = residual[converged]
 
-        next_upd = next_upd[not_converged]
-        if next_upd.numel() == 0:
+        if converged.all():
+            all_jacobian = j_inv
+            all_residual = residual
             break
 
-        j_inv = j_inv[not_converged]
-
-        residual = residual[not_converged].reshape(-1, 2, 1)
+        residual = residual.reshape(-1, 2, 1)
         step = (j_inv @ residual).squeeze(-1).float()
 
-        # careful: index_add_ (with underscore) is in-place, index_add (no underscore) is not in-place
-        x = x.index_add(dim=0, index=next_upd, source=step[:, 0], alpha=-1)
-        y = y.index_add(dim=0, index=next_upd, source=step[:, 1], alpha=-1)
+        x = x - step[:, 0]
+        y = y - step[:, 1]
     else:
         fx, fy, fx_x, fx_y, fy_x, fy_y = _compute_residual_and_jacobian(
-            x=x[next_upd],
-            y=y[next_upd],
-            xd=coords[next_upd, 0],
-            yd=coords[next_upd, 1],
-            distortion_params=distortion_params[next_upd],
+            x=x,
+            y=y,
+            xd=coords[..., 0],
+            yd=coords[..., 1],
+            distortion_params=distortion_params,
         )
         denominator = fx_x * fy_y - fx_y * fy_x
         invertible = torch.abs(denominator) > eps
         numerator = torch.stack([fy_y, -fx_y, -fy_x, fx_x], dim=-1)
-        all_jacobian[upd_conv] = (torch.where(invertible, 1 / denominator, 0).reshape(-1, 1) * numerator).reshape(
-            -1, 2, 2
-        )
-        all_residual[next_upd] = torch.stack((fx, fy), dim=-1)
+        all_jacobian = (torch.where(invertible, 1 / denominator, 0).reshape(-1, 1) * numerator).reshape(-1, 2, 2)
+        all_residual = torch.stack((fx, fy), dim=-1)
 
     undistort = torch.stack([x, y], dim=-1)
 
@@ -623,14 +611,11 @@ def fisheye_undistort(
 
     # Initialize from the distorted point.
     theta = torch.clone(r_d)
-    all_derivative = torch.empty_like(theta)
-    all_residual = torch.empty_like(theta)
-
-    # next_upd = torch.arange(theta.shape[0], device=theta.device)
+    all_derivative = torch.ones_like(theta)
+    all_residual = torch.zeros_like(theta)
 
     for i in range(max_iterations):
         f, dtheta = _compute_residual_and_jacobian_fisheye(
-            # theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
             theta=theta,
             thetad=r_d,
             distortion_params=distortion_params,
@@ -638,33 +623,14 @@ def fisheye_undistort(
 
         converged = torch.abs(f) < (resolution * tolerance)
 
-        # not_converged = torch.argwhere(~converged).squeeze(-1)
-        # converged = torch.argwhere(converged).squeeze(-1)
-
-        # upd_conv = next_upd[converged]
-        # all_derivative[upd_conv] = dtheta[converged]
-        # all_residual[upd_conv] = f[converged]
-
-        # next_upd = next_upd[not_converged]
-        # if next_upd.numel() == 0:
         if converged.all():
             all_derivative = dtheta
             all_residual = f
             break
 
-        # dtheta = dtheta[not_converged]
-        # f = f[not_converged].reshape(-1, 1)
-        step = torch.where(torch.abs(dtheta) > eps, (f / dtheta), 0)
-
-        # careful: index_add_ (with underscore) is in-place, index_add (no underscore) is not in-place
-        theta = theta - step
+        theta = theta - torch.where(torch.abs(dtheta) > eps, (f / dtheta), 0)
     else:
-        f, dtheta = _compute_residual_and_jacobian_fisheye(
-            theta=theta,
-            thetad=r_d,
-            distortion_params=distortion_params
-            # theta=theta[next_upd], thetad=r_d[next_upd], distortion_params=distortion_params[next_upd]
-        )
+        f, dtheta = _compute_residual_and_jacobian_fisheye(theta=theta, thetad=r_d, distortion_params=distortion_params)
         all_derivative = dtheta
         all_residual = f
 
@@ -674,113 +640,6 @@ def fisheye_undistort(
         all_derivative,
         coords * (1 + all_residual * inverse_r_d).unsqueeze(-1),
     )
-
-
-def _compute_residual_and_jacobian_old(
-    x: torch.Tensor,
-    y: torch.Tensor,
-    xd: torch.Tensor,
-    yd: torch.Tensor,
-    distortion_params: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,]:
-    """Auxiliary function of radial_and_tangential_undistort() that computes residuals and jacobians.
-    Adapted from MultiNeRF:
-    https://github.com/google-research/multinerf/blob/b02228160d3179300c7d499dca28cb9ca3677f32/internal/camera_utils.py#L427-L474
-
-    Args:
-        x: The updated x coordinates.
-        y: The updated y coordinates.
-        xd: The distorted x coordinates.
-        yd: The distorted y coordinates.
-        distortion_params: The distortion parameters [k1, k2, k3, k4, p1, p2].
-
-    Returns:
-        The residuals (fx, fy) and jacobians (fx_x, fx_y, fy_x, fy_y).
-    """
-
-    k1 = distortion_params[..., 0]
-    k2 = distortion_params[..., 1]
-    k3 = distortion_params[..., 2]
-    k4 = distortion_params[..., 3]
-    p1 = distortion_params[..., 4]
-    p2 = distortion_params[..., 5]
-
-    # let r(x, y) = x^2 + y^2;
-    #     d(x, y) = 1 + k1 * r(x, y) + k2 * r(x, y) ^2 + k3 * r(x, y)^3 +
-    #                   k4 * r(x, y)^4;
-    r = x * x + y * y
-    d = 1.0 + r * (k1 + r * (k2 + r * (k3 + r * k4)))
-
-    # The perfect projection is:
-    # xd = x * d(x, y) + 2 * p1 * x * y + p2 * (r(x, y) + 2 * x^2);
-    # yd = y * d(x, y) + 2 * p2 * x * y + p1 * (r(x, y) + 2 * y^2);
-    #
-    # Let's define
-    #
-    # fx(x, y) = x * d(x, y) + 2 * p1 * x * y + p2 * (r(x, y) + 2 * x^2) - xd;
-    # fy(x, y) = y * d(x, y) + 2 * p2 * x * y + p1 * (r(x, y) + 2 * y^2) - yd;
-    #
-    # We are looking for a solution that satisfies
-    # fx(x, y) = fy(x, y) = 0;
-    fx = d * x + 2 * p1 * x * y + p2 * (r + 2 * x * x) - xd
-    fy = d * y + 2 * p2 * x * y + p1 * (r + 2 * y * y) - yd
-
-    # Compute derivative of d over [x, y]
-    d_r = k1 + r * (2.0 * k2 + r * (3.0 * k3 + r * 4.0 * k4))
-    d_x = 2.0 * x * d_r
-    d_y = 2.0 * y * d_r
-
-    # Compute derivative of fx over x and y.
-    fx_x = d + d_x * x + 2.0 * p1 * y + 6.0 * p2 * x
-    fx_y = d_y * x + 2.0 * p1 * x + 2.0 * p2 * y
-
-    # Compute derivative of fy over x and y.
-    fy_x = d_x * y + 2.0 * p2 * y + 2.0 * p1 * x
-    fy_y = d + d_y * y + 2.0 * p2 * x + 6.0 * p1 * y
-
-    return fx, fy, fx_x, fx_y, fy_x, fy_y
-
-
-@torch_compile(dynamic=True, mode="reduce-overhead", backend="eager")
-def radial_and_tangential_undistort_old(
-    coords: torch.Tensor,
-    distortion_params: torch.Tensor,
-    eps: float = 1e-3,
-    max_iterations: int = 10,
-) -> torch.Tensor:
-    """Computes undistorted coords given opencv distortion parameters.
-    Adapted from MultiNeRF
-    https://github.com/google-research/multinerf/blob/b02228160d3179300c7d499dca28cb9ca3677f32/internal/camera_utils.py#L477-L509
-
-    Args:
-        coords: The distorted coordinates.
-        distortion_params: The distortion parameters [k1, k2, k3, k4, p1, p2].
-        eps: The epsilon for the convergence.
-        max_iterations: The maximum number of iterations to perform.
-
-    Returns:
-        The undistorted coordinates.
-    """
-
-    # Initialize from the distorted point.
-    x = coords[..., 0]
-    y = coords[..., 1]
-
-    for _ in range(max_iterations):
-        fx, fy, fx_x, fx_y, fy_x, fy_y = _compute_residual_and_jacobian(
-            x=x, y=y, xd=coords[..., 0], yd=coords[..., 1], distortion_params=distortion_params
-        )
-        print("mean abs error: ", torch.mean(torch.abs(torch.sqrt(fx * fx + fy * fy))))
-        denominator = fy_x * fx_y - fx_x * fy_y
-        x_numerator = fx * fy_y - fy * fx_y
-        y_numerator = fy * fx_x - fx * fy_x
-        step_x = torch.where(torch.abs(denominator) > eps, x_numerator / denominator, torch.zeros_like(denominator))
-        step_y = torch.where(torch.abs(denominator) > eps, y_numerator / denominator, torch.zeros_like(denominator))
-
-        x = x + step_x
-        y = y + step_y
-
-    return torch.stack([x, y], dim=-1)
 
 
 def rotation_matrix(a: Float[Tensor, "3"], b: Float[Tensor, "3"]) -> Float[Tensor, "3 3"]:
